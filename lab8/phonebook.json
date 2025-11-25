@@ -1,0 +1,25 @@
+[
+    {
+        "address": "Харченко 16, к. 315",
+        "birthDate": "2005-10-26",
+        "email": "lurtced@yandex.ru",
+        "firstName": "Арсен",
+        "lastName": "Джабраилов",
+        "patronymic": "Валерьевич",
+        "phones": [
+            "79992421698",
+            "79894540656"
+        ]
+    },
+    {
+        "address": "ул. Антонова, д. 1",
+        "birthDate": "2005-11-17",
+        "email": "anton@ant.on",
+        "firstName": "Антон",
+        "lastName": "Антонов",
+        "patronymic": "Антонович",
+        "phones": [
+            "73242433433"
+        ]
+    }
+]
