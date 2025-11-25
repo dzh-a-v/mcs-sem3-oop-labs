@@ -12,14 +12,36 @@
         ]
     },
     {
-        "address": "ул. Антонова, д. 1",
-        "birthDate": "2005-11-17",
-        "email": "anton@ant.on",
+        "address": "ул. Антона",
+        "birthDate": "2005-11-25",
+        "email": "anton@anton.ru",
         "firstName": "Антон",
         "lastName": "Антонов",
         "patronymic": "Антонович",
         "phones": [
-            "73242433433"
+            "79882322233"
+        ]
+    },
+    {
+        "address": "ул. Артёма",
+        "birthDate": "2005-11-23",
+        "email": "artemov@artem.ru",
+        "firstName": "Артём",
+        "lastName": "Артёмов",
+        "patronymic": "Артёмович",
+        "phones": [
+            "7789369427639"
+        ]
+    },
+    {
+        "address": "ул. Влада",
+        "birthDate": "2005-11-26",
+        "email": "vladov@vlad.ru",
+        "firstName": "Влад",
+        "lastName": "Владов",
+        "patronymic": "Владович",
+        "phones": [
+            "78352335432"
         ]
     }
 ]

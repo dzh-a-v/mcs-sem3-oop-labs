@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <algorithm> // ← для std::sort
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -45,8 +46,13 @@ MainWindow::MainWindow(QWidget* parent)
         });
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setSortingEnabled(true);
+    table->setSortingEnabled(false);
     table->horizontalHeader()->setStretchLastSection(true);
+    table->horizontalHeader()->setSortIndicatorShown(false);
+
+    // ✅ Подключаем клик по заголовку для сортировки
+    connect(table->horizontalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::onHeaderClicked);
+
     vLayout->addWidget(table);
 
     // Buttons
@@ -80,6 +86,7 @@ MainWindow::~MainWindow() = default;
 
 void MainWindow::updateTable()
 {
+    table->setRowCount(0);
     table->setRowCount(contacts.size());
     for (int i = 0; i < contacts.size(); ++i) {
         const auto& c = contacts[i];
@@ -93,38 +100,74 @@ void MainWindow::updateTable()
     }
 }
 
+void MainWindow::onHeaderClicked(int logicalIndex)
+{
+    Qt::SortOrder newOrder;
+
+    if (logicalIndex == currentSortColumn) {
+        // Клик по тому же столбцу — меняем направление
+        newOrder = (currentSortOrder == Qt::AscendingOrder)
+            ? Qt::DescendingOrder
+            : Qt::AscendingOrder;
+    }
+    else {
+        // Клик по новому столбцу — сортируем по возрастанию
+        newOrder = Qt::AscendingOrder;
+    }
+
+    // Обновляем состояние
+    currentSortColumn = logicalIndex;
+    currentSortOrder = newOrder;
+
+    // Сортируем contacts
+    std::sort(contacts.begin(), contacts.end(), [logicalIndex, newOrder](const Contact& a, const Contact& b) {
+        bool less = false;
+        switch (logicalIndex) {
+        case 0: less = a.lastName < b.lastName; break;
+        case 1: less = a.firstName < b.firstName; break;
+        case 2: less = a.patronymic < b.patronymic; break;
+        case 3: less = a.address < b.address; break;
+        case 4: less = a.birthDate < b.birthDate; break;
+        case 5: less = a.email < b.email; break;
+        case 6: less = a.phoneNumbers.join(", ") < b.phoneNumbers.join(", "); break;
+        default: less = false;
+        }
+
+        return (newOrder == Qt::AscendingOrder) ? less : !less;
+        });
+
+    updateTable();
+
+    // Устанавливаем индикатор сортировки в заголовке
+    table->horizontalHeader()->setSortIndicatorShown(true);
+    table->horizontalHeader()->setSortIndicator(logicalIndex, newOrder);
+}
+
 void MainWindow::onSearchTextChanged(const QString& text)
 {
     QString input = text.trimmed();
     if (input.isEmpty()) {
-        // Показать всё
         for (int row = 0; row < table->rowCount(); ++row)
             table->setRowHidden(row, false);
         return;
     }
 
-    // Разбиваем на слова (удаляем пустые, если были лишние пробелы)
     QStringList words = input.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-    // Приводим к нижнему регистру для case-insensitive поиска
     for (int i = 0; i < words.size(); ++i)
         words[i] = words[i].toLower();
 
-    // Проверяем каждый контакт
     for (int row = 0; row < table->rowCount(); ++row) {
-        const Contact& c = contacts[row];
+        const Contact& c = contacts[row]; // ← теперь безопасно!
 
-        // Собираем все поля контакта в один список строк
         QStringList fields;
         fields << c.lastName << c.firstName << c.patronymic
             << c.address << c.email
             << c.birthDate.toString("dd.MM.yyyy")
-            << c.phoneNumbers; // QList<QString> автоматически конвертируется
+            << c.phoneNumbers;
 
-        // Приводим все поля к нижнему регистру
         for (QString& field : fields)
             field = field.toLower();
 
-        // Проверяем: каждое слово должно найтись хотя бы в одном поле
         bool contactMatches = true;
         for (const QString& word : words) {
             bool wordFound = false;
@@ -139,7 +182,6 @@ void MainWindow::onSearchTextChanged(const QString& text)
                 break;
             }
         }
-
         table->setRowHidden(row, !contactMatches);
     }
 }
@@ -202,6 +244,8 @@ bool MainWindow::validateContact(const Contact& c, QString& error)
     return true;
 }
 
+// --- onAddContact, onEditContact, onDeleteContact — без изменений (остаются как в твоём коде) ---
+
 void MainWindow::onAddContact()
 {
     QDialog dialog(this);
@@ -220,15 +264,34 @@ void MainWindow::onAddContact()
 
     auto* phonesList = new QListWidget;
     auto* lePhoneInput = new QLineEdit;
-    lePhoneInput->setPlaceholderText("Введите номер и нажмите Enter");
-    connect(lePhoneInput, &QLineEdit::returnPressed, [=]() {
+    lePhoneInput->setPlaceholderText("Введите номер телефона");
+    auto* btnAddPhone = new QPushButton("Добавить телефон");
+    connect(btnAddPhone, &QPushButton::clicked, [&]() {
         QString raw = lePhoneInput->text().trimmed();
-        if (!raw.isEmpty()) {
-            QString normalized = normalizePhoneNumber(raw);
-            if (!normalized.isEmpty())
-                phonesList->addItem(normalized);
-            lePhoneInput->clear();
+        if (raw.isEmpty()) {
+            QMessageBox::warning(&dialog, "Ошибка", "Введите номер телефона");
+            return;
         }
+
+        QString normalized = normalizePhoneNumber(raw);
+        if (normalized.isEmpty()) {
+            QMessageBox::warning(&dialog, "Ошибка", "Номер не содержит цифр");
+            return;
+        }
+
+        if (normalized.length() < 7 || normalized.length() > 15) {
+            QMessageBox::warning(&dialog, "Ошибка", "Номер должен содержать от 7 до 15 цифр");
+            return;
+        }
+
+        if (!normalized.contains(QRegularExpression("^[0-9]+$"))) {
+            QMessageBox::warning(&dialog, "Ошибка", "Номер должен содержать только цифры");
+            return;
+        }
+
+        phonesList->addItem(normalized);
+        lePhoneInput->clear();
+        lePhoneInput->setFocus();
         });
 
     layout->addRow("Фамилия*", leLast);
@@ -238,7 +301,8 @@ void MainWindow::onAddContact()
     layout->addRow("Дата рождения*", deBirth);
     layout->addRow("Email*", leEmail);
     layout->addRow("Телефоны*", phonesList);
-    layout->addRow("Добавить телефон", lePhoneInput);
+    layout->addRow("Номер", lePhoneInput);
+    layout->addRow("", btnAddPhone);
 
     auto* btnBox = new QHBoxLayout;
     auto* okBtn = new QPushButton("OK");
@@ -249,9 +313,8 @@ void MainWindow::onAddContact()
     layout->addRow(btnBox);
 
     connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
-    connect(okBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
 
-    if (dialog.exec() == QDialog::Accepted) {
+    connect(okBtn, &QPushButton::clicked, [&]() {
         Contact c;
         c.lastName = leLast->text().trimmed();
         c.firstName = leFirst->text().trimmed();
@@ -267,11 +330,14 @@ void MainWindow::onAddContact()
         if (validateContact(c, error)) {
             contacts.append(c);
             updateTable();
+            dialog.accept();
         }
         else {
-            QMessageBox::warning(this, "Ошибка", error);
+            QMessageBox::warning(&dialog, "Ошибка", error);
         }
-    }
+        });
+
+    dialog.exec();
 }
 
 void MainWindow::onEditContact()
@@ -282,7 +348,7 @@ void MainWindow::onEditContact()
         return;
     }
 
-    Contact c = contacts[row];
+    Contact c = contacts[row]; // ← теперь всегда корректно
 
     QDialog dialog(this);
     dialog.setWindowTitle("Редактировать контакт");
@@ -302,15 +368,34 @@ void MainWindow::onEditContact()
         phonesList->addItem(p);
 
     auto* lePhoneInput = new QLineEdit;
-    lePhoneInput->setPlaceholderText("Добавить номер (Enter)");
-    connect(lePhoneInput, &QLineEdit::returnPressed, [=]() {
+    lePhoneInput->setPlaceholderText("Введите номер телефона");
+    auto* btnAddPhone = new QPushButton("Добавить телефон");
+    connect(btnAddPhone, &QPushButton::clicked, [&]() {
         QString raw = lePhoneInput->text().trimmed();
-        if (!raw.isEmpty()) {
-            QString normalized = normalizePhoneNumber(raw);
-            if (!normalized.isEmpty())
-                phonesList->addItem(normalized);
-            lePhoneInput->clear();
+        if (raw.isEmpty()) {
+            QMessageBox::warning(&dialog, "Ошибка", "Введите номер телефона");
+            return;
         }
+
+        QString normalized = normalizePhoneNumber(raw);
+        if (normalized.isEmpty()) {
+            QMessageBox::warning(&dialog, "Ошибка", "Номер не содержит цифр");
+            return;
+        }
+
+        if (normalized.length() < 7 || normalized.length() > 15) {
+            QMessageBox::warning(&dialog, "Ошибка", "Номер должен содержать от 7 до 15 цифр");
+            return;
+        }
+
+        if (!normalized.contains(QRegularExpression("^[0-9]+$"))) {
+            QMessageBox::warning(&dialog, "Ошибка", "Номер должен содержать только цифры");
+            return;
+        }
+
+        phonesList->addItem(normalized);
+        lePhoneInput->clear();
+        lePhoneInput->setFocus();
         });
 
     QPushButton* removePhoneBtn = new QPushButton("Удалить выбранный телефон");
@@ -326,8 +411,9 @@ void MainWindow::onEditContact()
     layout->addRow("Дата рождения*", deBirth);
     layout->addRow("Email*", leEmail);
     layout->addRow("Телефоны*", phonesList);
-    layout->addRow("Добавить телефон", lePhoneInput);
-    layout->addRow(removePhoneBtn);
+    layout->addRow("Номер", lePhoneInput);
+    layout->addRow("", btnAddPhone);
+    layout->addRow("", removePhoneBtn);
 
     auto* btnBox = new QHBoxLayout;
     auto* okBtn = new QPushButton("OK");
@@ -338,29 +424,32 @@ void MainWindow::onEditContact()
     layout->addRow(btnBox);
 
     connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
-    connect(okBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
 
-    if (dialog.exec() == QDialog::Accepted) {
-        c.lastName = leLast->text().trimmed();
-        c.firstName = leFirst->text().trimmed();
-        c.patronymic = lePatr->text().trimmed();
-        c.address = leAddr->text().trimmed();
-        c.birthDate = deBirth->date();
-        c.email = leEmail->text().trimmed();
+    connect(okBtn, &QPushButton::clicked, [&, row]() {
+        Contact updated;
+        updated.lastName = leLast->text().trimmed();
+        updated.firstName = leFirst->text().trimmed();
+        updated.patronymic = lePatr->text().trimmed();
+        updated.address = leAddr->text().trimmed();
+        updated.birthDate = deBirth->date();
+        updated.email = leEmail->text().trimmed();
 
-        c.phoneNumbers.clear();
+        updated.phoneNumbers.clear();
         for (int i = 0; i < phonesList->count(); ++i)
-            c.phoneNumbers.append(phonesList->item(i)->text());
+            updated.phoneNumbers.append(phonesList->item(i)->text());
 
         QString error;
-        if (validateContact(c, error)) {
-            contacts[row] = c;
+        if (validateContact(updated, error)) {
+            contacts[row] = updated;
             updateTable();
+            dialog.accept();
         }
         else {
-            QMessageBox::warning(this, "Ошибка", error);
+            QMessageBox::warning(&dialog, "Ошибка", error);
         }
-    }
+        });
+
+    dialog.exec();
 }
 
 void MainWindow::onDeleteContact()
@@ -424,23 +513,23 @@ void MainWindow::loadContactsFromJson(const QString& filename)
     QFile file(filename);
     if (!file.exists()) {
         contacts.clear();
+        updateTable();
         return;
     }
     if (file.open(QIODevice::ReadOnly)) {
         QByteArray data = file.readAll();
         file.close();
-
         QJsonDocument doc = QJsonDocument::fromJson(data);
         if (!doc.isArray()) {
             QMessageBox::warning(this, "Ошибка", "Неверный формат файла");
             return;
         }
-
         contacts.clear();
         QJsonArray array = doc.array();
         for (const QJsonValue& val : array) {
             if (val.isObject())
                 contacts.append(Contact::fromJson(val.toObject()));
         }
+        updateTable();
     }
 }
