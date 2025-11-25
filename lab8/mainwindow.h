@@ -16,7 +16,7 @@ public:
     MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
 
-private slots:
+private:
     void onAddContact();
     void onEditContact();
     void onDeleteContact();
@@ -24,7 +24,6 @@ private slots:
     void onLoadFromFile();
     void onSearchTextChanged(const QString& text);
 
-private:
     void updateTable();
     void saveContactsToJson(const QString& filename);
     void loadContactsFromJson(const QString& filename);

@@ -95,17 +95,52 @@ void MainWindow::updateTable()
 
 void MainWindow::onSearchTextChanged(const QString& text)
 {
-    QString filter = text.trimmed().toLower();
+    QString input = text.trimmed();
+    if (input.isEmpty()) {
+        // Показать всё
+        for (int row = 0; row < table->rowCount(); ++row)
+            table->setRowHidden(row, false);
+        return;
+    }
+
+    // Разбиваем на слова (удаляем пустые, если были лишние пробелы)
+    QStringList words = input.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    // Приводим к нижнему регистру для case-insensitive поиска
+    for (int i = 0; i < words.size(); ++i)
+        words[i] = words[i].toLower();
+
+    // Проверяем каждый контакт
     for (int row = 0; row < table->rowCount(); ++row) {
-        bool match = false;
-        for (int col = 0; col < table->columnCount(); ++col) {
-            QTableWidgetItem* item = table->item(row, col);
-            if (item && item->text().toLower().contains(filter)) {
-                match = true;
+        const Contact& c = contacts[row];
+
+        // Собираем все поля контакта в один список строк
+        QStringList fields;
+        fields << c.lastName << c.firstName << c.patronymic
+            << c.address << c.email
+            << c.birthDate.toString("dd.MM.yyyy")
+            << c.phoneNumbers; // QList<QString> автоматически конвертируется
+
+        // Приводим все поля к нижнему регистру
+        for (QString& field : fields)
+            field = field.toLower();
+
+        // Проверяем: каждое слово должно найтись хотя бы в одном поле
+        bool contactMatches = true;
+        for (const QString& word : words) {
+            bool wordFound = false;
+            for (const QString& field : fields) {
+                if (field.contains(word)) {
+                    wordFound = true;
+                    break;
+                }
+            }
+            if (!wordFound) {
+                contactMatches = false;
                 break;
             }
         }
-        table->setRowHidden(row, !match);
+
+        table->setRowHidden(row, !contactMatches);
     }
 }
 
