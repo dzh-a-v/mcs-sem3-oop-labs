@@ -4,7 +4,7 @@ Contact::Contact() {}
 
 Contact::Contact(const QString& last, const QString& first, const QString& patr,
     const QString& addr, const QDate& bdate, const QString& em,
-    const QList<QString>& phones)
+    const QList<PhoneEntry>& phones)
     : firstName(first), lastName(last), patronymic(patr),
     address(addr), birthDate(bdate), email(em), phoneNumbers(phones) {
 }
@@ -19,8 +19,8 @@ QJsonObject Contact::toJson() const {
     obj["email"] = email;
 
     QJsonArray phonesArray;
-    for (const QString& phone : phoneNumbers)
-        phonesArray.append(phone);
+    for (const PhoneEntry& phone : phoneNumbers)
+        phonesArray.append(phone.toJson());
     obj["phones"] = phonesArray;
 
     return obj;
@@ -37,7 +37,7 @@ Contact Contact::fromJson(const QJsonObject& obj) {
 
     QJsonArray phonesArray = obj["phones"].toArray();
     for (const QJsonValue& val : phonesArray)
-        c.phoneNumbers.append(val.toString());
+        c.phoneNumbers.append(PhoneEntry::fromJson(val.toObject()));
 
     return c;
 }

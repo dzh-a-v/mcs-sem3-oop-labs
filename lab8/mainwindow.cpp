@@ -10,7 +10,9 @@
 #include <QTextEdit>
 #include <QDateEdit>
 #include <QListWidget>
+#include <QListWidgetItem>
 #include <QPushButton>
+#include <QButtonGroup>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -20,10 +22,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <algorithm> // ← для std::sort
+#include <QVariantMap>
+#include <algorithm>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
+    , currentSortColumn(-1)
+    , currentSortOrder(Qt::AscendingOrder)
 {
     setWindowTitle("Телефонный справочник");
     resize(900, 600);
@@ -47,10 +52,12 @@ MainWindow::MainWindow(QWidget* parent)
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSortingEnabled(false);
+    table->setWordWrap(true);
+    table->resizeRowsToContents();
+    //table->verticalHeader()->setDefaultSectionSize(30);
     table->horizontalHeader()->setStretchLastSection(true);
     table->horizontalHeader()->setSortIndicatorShown(false);
 
-    // ✅ Подключаем клик по заголовку для сортировки
     connect(table->horizontalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::onHeaderClicked);
 
     vLayout->addWidget(table);
@@ -80,6 +87,7 @@ MainWindow::MainWindow(QWidget* parent)
     // Load default file
     loadContactsFromJson(currentFilePath);
     updateTable();
+    table->resizeRowsToContents();
 }
 
 MainWindow::~MainWindow() = default;
@@ -96,30 +104,33 @@ void MainWindow::updateTable()
         table->setItem(i, 3, new QTableWidgetItem(c.address));
         table->setItem(i, 4, new QTableWidgetItem(c.birthDate.toString("dd.MM.yyyy")));
         table->setItem(i, 5, new QTableWidgetItem(c.email));
-        table->setItem(i, 6, new QTableWidgetItem(c.phoneNumbers.join(", ")));
+
+        QStringList displays;
+        for (const auto& phone : c.phoneNumbers) {
+            displays << phone.display();
+        }
+        table->setItem(i, 6, new QTableWidgetItem(displays.join("\n")));
+        table->item(i, 0)->setData(Qt::UserRole, i); // UPD: for deleting
     }
+
+    table->resizeRowsToContents();
 }
 
 void MainWindow::onHeaderClicked(int logicalIndex)
 {
     Qt::SortOrder newOrder;
-
     if (logicalIndex == currentSortColumn) {
-        // Клик по тому же столбцу — меняем направление
         newOrder = (currentSortOrder == Qt::AscendingOrder)
             ? Qt::DescendingOrder
             : Qt::AscendingOrder;
     }
     else {
-        // Клик по новому столбцу — сортируем по возрастанию
         newOrder = Qt::AscendingOrder;
     }
 
-    // Обновляем состояние
     currentSortColumn = logicalIndex;
     currentSortOrder = newOrder;
 
-    // Сортируем contacts
     std::sort(contacts.begin(), contacts.end(), [logicalIndex, newOrder](const Contact& a, const Contact& b) {
         bool less = false;
         switch (logicalIndex) {
@@ -129,16 +140,19 @@ void MainWindow::onHeaderClicked(int logicalIndex)
         case 3: less = a.address < b.address; break;
         case 4: less = a.birthDate < b.birthDate; break;
         case 5: less = a.email < b.email; break;
-        case 6: less = a.phoneNumbers.join(", ") < b.phoneNumbers.join(", "); break;
+        case 6: {
+            QStringList aPhones, bPhones;
+            for (const auto& p : a.phoneNumbers) aPhones << p.display();
+            for (const auto& p : b.phoneNumbers) bPhones << p.display();
+            less = aPhones.join("; ") < bPhones.join("; ");
+            break;
+        }
         default: less = false;
         }
-
         return (newOrder == Qt::AscendingOrder) ? less : !less;
         });
 
     updateTable();
-
-    // Устанавливаем индикатор сортировки в заголовке
     table->horizontalHeader()->setSortIndicatorShown(true);
     table->horizontalHeader()->setSortIndicator(logicalIndex, newOrder);
 }
@@ -157,13 +171,16 @@ void MainWindow::onSearchTextChanged(const QString& text)
         words[i] = words[i].toLower();
 
     for (int row = 0; row < table->rowCount(); ++row) {
-        const Contact& c = contacts[row]; // ← теперь безопасно!
+        const Contact& c = contacts[row];
 
         QStringList fields;
         fields << c.lastName << c.firstName << c.patronymic
             << c.address << c.email
-            << c.birthDate.toString("dd.MM.yyyy")
-            << c.phoneNumbers;
+            << c.birthDate.toString("dd.MM.yyyy");
+
+        for (const auto& phone : c.phoneNumbers) {
+            fields << phone.display();
+        }
 
         for (QString& field : fields)
             field = field.toLower();
@@ -190,8 +207,10 @@ QString MainWindow::normalizePhoneNumber(const QString& input)
 {
     QString cleaned = input;
     cleaned.remove(QRegularExpression("[^\\d+]"));
-    if (cleaned.startsWith('+'))
-        cleaned = cleaned.mid(1);
+    if (cleaned.contains('+')) {
+        cleaned.remove('+');
+        cleaned.prepend('+');
+    }
     return cleaned;
 }
 
@@ -201,9 +220,11 @@ bool MainWindow::validateContact(const Contact& c, QString& error)
         if (s.isEmpty()) return false;
         QString trimmed = s.trimmed();
         if (trimmed.isEmpty()) return false;
-        if (trimmed.startsWith('-') || trimmed.endsWith('-'))
+        if (trimmed.startsWith('-') || trimmed.endsWith('-')) {
             return false;
-        QRegularExpression re(R"(^[A-ZА-ЯЁ][a-zа-яё0-9]*(?:[\s\-][A-ZА-ЯЁ][a-zа-яё0-9]*)*$)");
+        }
+        // https://stackoverflow.com/questions/12933034/what-does-this-regex-mean
+        QRegularExpression re(R"(^[A-ZА-ЯЁ][a-zа-яё0-9]*(?:[ \-][A-ZА-ЯЁa-zа-яё0-9][a-zа-яё0-9]*)*$)");
         return re.match(trimmed).hasMatch();
         };
 
@@ -230,21 +251,20 @@ bool MainWindow::validateContact(const Contact& c, QString& error)
         return false;
     }
 
-    for (const QString& phone : c.phoneNumbers) {
-        if (phone.isEmpty() || phone.length() < 7 || phone.length() > 15) {
-            error = "Некорректный номер телефона (длина)";
+    for (const PhoneEntry& phone : c.phoneNumbers) {
+        if (phone.number.isEmpty()) {
+            error = "Номер не может быть пустым";
             return false;
         }
-        if (!phone.contains(QRegularExpression("^[0-9]+$"))) {
-            error = "Номер телефона должен содержать только цифры";
+        QRegularExpression phoneRe(R"(^\+?\d{7,15}$)");
+        if (!phoneRe.match(phone.number).hasMatch()) {
+            error = "Некорректный номер телефона";
             return false;
         }
     }
 
     return true;
 }
-
-// --- onAddContact, onEditContact, onDeleteContact — без изменений (остаются как в твоём коде) ---
 
 void MainWindow::onAddContact()
 {
@@ -263,6 +283,26 @@ void MainWindow::onAddContact()
     auto* leEmail = new QLineEdit;
 
     auto* phonesList = new QListWidget;
+    phonesList->setMinimumHeight(100);
+
+    auto* btnWork = new QPushButton("Рабочий");
+    auto* btnHome = new QPushButton("Домашний");
+    auto* btnMobile = new QPushButton("Служебный");
+    btnWork->setCheckable(true);
+    btnHome->setCheckable(true);
+    btnMobile->setCheckable(true);
+    btnWork->setChecked(true);
+
+    auto* typeGroup = new QButtonGroup(&dialog);
+    typeGroup->addButton(btnWork, 0);
+    typeGroup->addButton(btnHome, 1);
+    typeGroup->addButton(btnMobile, 2);
+
+    auto* typeLayout = new QHBoxLayout;
+    typeLayout->addWidget(btnWork);
+    typeLayout->addWidget(btnHome);
+    typeLayout->addWidget(btnMobile);
+
     auto* lePhoneInput = new QLineEdit;
     lePhoneInput->setPlaceholderText("Введите номер телефона");
     auto* btnAddPhone = new QPushButton("Добавить телефон");
@@ -273,35 +313,49 @@ void MainWindow::onAddContact()
             return;
         }
 
+        QRegularExpression inputRe(R"(^[\d+\-\(\)\s]+$)");
+        if (!inputRe.match(raw).hasMatch()) {
+            QMessageBox::warning(&dialog, "Ошибка", "Номер может содержать только цифры, +, -, (, ), пробелы");
+            return;
+        }
+
         QString normalized = normalizePhoneNumber(raw);
         if (normalized.isEmpty()) {
             QMessageBox::warning(&dialog, "Ошибка", "Номер не содержит цифр");
             return;
         }
 
-        if (normalized.length() < 7 || normalized.length() > 15) {
+        QString digitsOnly = normalized;
+        if (digitsOnly.startsWith('+')) digitsOnly = digitsOnly.mid(1);
+        if (digitsOnly.length() < 7 || digitsOnly.length() > 15) {
             QMessageBox::warning(&dialog, "Ошибка", "Номер должен содержать от 7 до 15 цифр");
             return;
         }
 
-        if (!normalized.contains(QRegularExpression("^[0-9]+$"))) {
-            QMessageBox::warning(&dialog, "Ошибка", "Номер должен содержать только цифры");
-            return;
-        }
+        QString type;
+        if (btnHome->isChecked()) type = "домашний";
+        else if (btnMobile->isChecked()) type = "служебный";
+        else type = "рабочий";
 
-        phonesList->addItem(normalized);
+        QListWidgetItem* item = new QListWidgetItem(type + ": " + normalized, phonesList);
+        QVariantMap data;
+        data["number"] = normalized;
+        data["type"] = type;
+        item->setData(Qt::UserRole, data);
+
         lePhoneInput->clear();
         lePhoneInput->setFocus();
         });
 
     layout->addRow("Фамилия*", leLast);
     layout->addRow("Имя*", leFirst);
-    layout->addRow("Отчество", lePatr);
-    layout->addRow("Адрес", leAddr);
+    layout->addRow("Отчество*", lePatr);
+    layout->addRow("Адрес*", leAddr);
     layout->addRow("Дата рождения*", deBirth);
     layout->addRow("Email*", leEmail);
     layout->addRow("Телефоны*", phonesList);
-    layout->addRow("Номер", lePhoneInput);
+    layout->addRow("Тип*", typeLayout);
+    layout->addRow("Номер*", lePhoneInput);
     layout->addRow("", btnAddPhone);
 
     auto* btnBox = new QHBoxLayout;
@@ -323,8 +377,17 @@ void MainWindow::onAddContact()
         c.birthDate = deBirth->date();
         c.email = leEmail->text().trimmed();
 
-        for (int i = 0; i < phonesList->count(); ++i)
-            c.phoneNumbers.append(phonesList->item(i)->text());
+        c.phoneNumbers.clear();
+        for (int i = 0; i < phonesList->count(); ++i) {
+            QVariant data = phonesList->item(i)->data(Qt::UserRole);
+            if (data.isValid()) {
+                QVariantMap map = data.toMap();
+                PhoneEntry entry;
+                entry.number = map["number"].toString();
+                entry.type = map["type"].toString();
+                c.phoneNumbers.append(entry);
+            }
+        }
 
         QString error;
         if (validateContact(c, error)) {
@@ -348,7 +411,7 @@ void MainWindow::onEditContact()
         return;
     }
 
-    Contact c = contacts[row]; // ← теперь всегда корректно
+    Contact c = contacts[row];
 
     QDialog dialog(this);
     dialog.setWindowTitle("Редактировать контакт");
@@ -364,8 +427,32 @@ void MainWindow::onEditContact()
     auto* leEmail = new QLineEdit(c.email);
 
     auto* phonesList = new QListWidget;
-    for (const QString& p : c.phoneNumbers)
-        phonesList->addItem(p);
+    phonesList->setMinimumHeight(100);
+    for (const PhoneEntry& p : c.phoneNumbers) {
+        QListWidgetItem* item = new QListWidgetItem(p.display(), phonesList);
+        QVariantMap data;
+        data["number"] = p.number;
+        data["type"] = p.type;
+        item->setData(Qt::UserRole, data);
+    }
+
+    auto* btnWork = new QPushButton("Рабочий");
+    auto* btnHome = new QPushButton("Домашний");
+    auto* btnMobile = new QPushButton("Служебный");
+    btnWork->setCheckable(true);
+    btnHome->setCheckable(true);
+    btnMobile->setCheckable(true);
+    btnWork->setChecked(true);
+
+    auto* typeGroup = new QButtonGroup(&dialog);
+    typeGroup->addButton(btnWork, 0);
+    typeGroup->addButton(btnHome, 1);
+    typeGroup->addButton(btnMobile, 2);
+
+    auto* typeLayout = new QHBoxLayout;
+    typeLayout->addWidget(btnWork);
+    typeLayout->addWidget(btnHome);
+    typeLayout->addWidget(btnMobile);
 
     auto* lePhoneInput = new QLineEdit;
     lePhoneInput->setPlaceholderText("Введите номер телефона");
@@ -377,23 +464,36 @@ void MainWindow::onEditContact()
             return;
         }
 
+        QRegularExpression inputRe(R"(^[\d+\-\(\)\s]+$)");
+        if (!inputRe.match(raw).hasMatch()) {
+            QMessageBox::warning(&dialog, "Ошибка", "Номер может содержать только цифры, +, -, (, ), пробелы");
+            return;
+        }
+
         QString normalized = normalizePhoneNumber(raw);
         if (normalized.isEmpty()) {
             QMessageBox::warning(&dialog, "Ошибка", "Номер не содержит цифр");
             return;
         }
 
-        if (normalized.length() < 7 || normalized.length() > 15) {
+        QString digitsOnly = normalized;
+        if (digitsOnly.startsWith('+')) digitsOnly = digitsOnly.mid(1);
+        if (digitsOnly.length() < 7 || digitsOnly.length() > 15) {
             QMessageBox::warning(&dialog, "Ошибка", "Номер должен содержать от 7 до 15 цифр");
             return;
         }
 
-        if (!normalized.contains(QRegularExpression("^[0-9]+$"))) {
-            QMessageBox::warning(&dialog, "Ошибка", "Номер должен содержать только цифры");
-            return;
-        }
+        QString type;
+        if (btnHome->isChecked()) type = "домашний";
+        else if (btnMobile->isChecked()) type = "служебный";
+        else type = "рабочий";
 
-        phonesList->addItem(normalized);
+        QListWidgetItem* item = new QListWidgetItem(type + ": " + normalized, phonesList);
+        QVariantMap data;
+        data["number"] = normalized;
+        data["type"] = type;
+        item->setData(Qt::UserRole, data);
+
         lePhoneInput->clear();
         lePhoneInput->setFocus();
         });
@@ -406,12 +506,13 @@ void MainWindow::onEditContact()
 
     layout->addRow("Фамилия*", leLast);
     layout->addRow("Имя*", leFirst);
-    layout->addRow("Отчество", lePatr);
-    layout->addRow("Адрес", leAddr);
+    layout->addRow("Отчество*", lePatr);
+    layout->addRow("Адрес*", leAddr);
     layout->addRow("Дата рождения*", deBirth);
     layout->addRow("Email*", leEmail);
     layout->addRow("Телефоны*", phonesList);
-    layout->addRow("Номер", lePhoneInput);
+    layout->addRow("Тип*", typeLayout);
+    layout->addRow("Номер*", lePhoneInput);
     layout->addRow("", btnAddPhone);
     layout->addRow("", removePhoneBtn);
 
@@ -435,8 +536,16 @@ void MainWindow::onEditContact()
         updated.email = leEmail->text().trimmed();
 
         updated.phoneNumbers.clear();
-        for (int i = 0; i < phonesList->count(); ++i)
-            updated.phoneNumbers.append(phonesList->item(i)->text());
+        for (int i = 0; i < phonesList->count(); ++i) {
+            QVariant data = phonesList->item(i)->data(Qt::UserRole);
+            if (data.isValid()) {
+                QVariantMap map = data.toMap();
+                PhoneEntry entry;
+                entry.number = map["number"].toString();
+                entry.type = map["type"].toString();
+                updated.phoneNumbers.append(entry);
+            }
+        }
 
         QString error;
         if (validateContact(updated, error)) {
@@ -454,15 +563,47 @@ void MainWindow::onEditContact()
 
 void MainWindow::onDeleteContact()
 {
-    int row = table->currentRow();
-    if (row < 0) {
-        QMessageBox::information(this, "Инфо", "Выберите контакт для удаления");
+    QList<QTableWidgetSelectionRange> selection = table->selectedRanges();
+    if (selection.isEmpty()) {
+        QMessageBox::information(this, "Инфо", "Выберите контакт(ы) для удаления");
         return;
     }
 
+    // collect all VISUALLY selected rows
+    QSet<int> visualRows;
+    for (const QTableWidgetSelectionRange& range : selection) {
+        for (int row = range.topRow(); row <= range.bottomRow(); ++row) {
+            visualRows.insert(row);
+        }
+    }
+
+    // get real contacts indexes
+    QList<int> contactIndices;
+    for (int visualRow : visualRows) {
+        QTableWidgetItem* item0 = table->item(visualRow, 0);
+        if (item0) {
+            int idx = item0->data(Qt::UserRole).toInt();
+            if (idx >= 0 && idx < contacts.size()) {
+                contactIndices.append(idx);
+            }
+        }
+    }
+
+    if (contactIndices.isEmpty()) {
+        QMessageBox::warning(this, "Ошибка", "Не удалось определить выбранные контакты");
+        return;
+    }
+
+    // sorting for correct deletion
+    std::sort(contactIndices.begin(), contactIndices.end());
+    contactIndices.erase(std::unique(contactIndices.begin(), contactIndices.end()), contactIndices.end());
+    std::reverse(contactIndices.begin(), contactIndices.end());
+
     if (QMessageBox::question(this, "Подтверждение",
-        "Удалить выбранный контакт?") == QMessageBox::Yes) {
-        contacts.removeAt(row);
+        QString("Удалить %1 контакт(ов)?").arg(contactIndices.size())) == QMessageBox::Yes) {
+        for (int idx : contactIndices) {
+            contacts.removeAt(idx);
+        }
         updateTable();
     }
 }

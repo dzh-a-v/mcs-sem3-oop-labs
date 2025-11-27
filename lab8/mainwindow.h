@@ -1,5 +1,4 @@
-﻿#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+﻿#pragma once
 
 #include <QMainWindow>
 #include <QList>
@@ -15,6 +14,7 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
+    QTableWidget* table; // was private, but now I need to resize rows after start
 
 private slots:
     void onAddContact();
@@ -23,7 +23,7 @@ private slots:
     void onSaveToFile();
     void onLoadFromFile();
     void onSearchTextChanged(const QString& text);
-    void onHeaderClicked(int logicalIndex); // ← новое
+    void onHeaderClicked(int logicalIndex);
 
 private:
     void updateTable();
@@ -33,13 +33,9 @@ private:
     QString normalizePhoneNumber(const QString& input);
 
     QList<Contact> contacts;
-    QTableWidget* table;
     QLineEdit* searchBox;
     QString currentFilePath = "phonebook.json";
 
-    // Для двунаправленной сортировки
     int currentSortColumn = -1;
     Qt::SortOrder currentSortOrder = Qt::AscendingOrder;
 };
-
-#endif // MAINWINDOW_H

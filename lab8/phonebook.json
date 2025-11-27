@@ -1,47 +1,62 @@
 [
-    {
-        "address": "Харченко 16, к. 315",
-        "birthDate": "2005-10-26",
-        "email": "lurtced@yandex.ru",
-        "firstName": "Арсен",
-        "lastName": "Джабраилов",
-        "patronymic": "Валерьевич",
-        "phones": [
-            "79992421698",
-            "79894540656"
-        ]
-    },
-    {
-        "address": "ул. Антона",
-        "birthDate": "2005-11-25",
-        "email": "anton@anton.ru",
-        "firstName": "Антон",
-        "lastName": "Антонов",
-        "patronymic": "Антонович",
-        "phones": [
-            "79882322233"
-        ]
-    },
-    {
-        "address": "ул. Артёма",
-        "birthDate": "2005-11-23",
-        "email": "artemov@artem.ru",
-        "firstName": "Артём",
-        "lastName": "Артёмов",
-        "patronymic": "Артёмович",
-        "phones": [
-            "7789369427639"
-        ]
-    },
-    {
-        "address": "ул. Влада",
-        "birthDate": "2005-11-26",
-        "email": "vladov@vlad.ru",
-        "firstName": "Влад",
-        "lastName": "Владов",
-        "patronymic": "Владович",
-        "phones": [
-            "78352335432"
-        ]
-    }
+  {
+    "address": "Italy",
+    "birthDate": "2004-01-05",
+    "email": "leonrado@da.vinci",
+    "firstName": "Da Vinci",
+    "lastName": "Leonardo",
+    "patronymic": "The-2nd",
+    "phones": [
+      {
+        "number": "+88005553535",
+        "type": "служебный"
+      }
+    ]
+  },
+  {
+    "address": "ул. Антона",
+    "birthDate": "2005-11-26",
+    "email": "antonov@anton.com",
+    "firstName": "Антон",
+    "lastName": "Антонов",
+    "patronymic": "Антонович",
+    "phones": [
+      {
+        "number": "+912353235632",
+        "type": "рабочий"
+      }
+    ]
+  },
+  {
+    "address": "СПб, ул. Харченко, 16",
+    "birthDate": "2005-11-26",
+    "email": "lurtced@yandex.ru",
+    "firstName": "Арсен",
+    "lastName": "Джабраилов",
+    "patronymic": "Валерьевич",
+    "phones": [
+      {
+        "number": "+79992421698",
+        "type": "рабочий"
+      },
+      {
+        "number": "89894540656",
+        "type": "домашний"
+      }
+    ]
+  },
+  {
+    "address": "ул Васи",
+    "birthDate": "2005-11-27",
+    "email": "vasya@vasya.ri",
+    "firstName": "Вася",
+    "lastName": "Васильев",
+    "patronymic": "Васильевич",
+    "phones": [
+      {
+        "number": "+3584579873429",
+        "type": "рабочий"
+      }
+    ]
+  }
 ]
